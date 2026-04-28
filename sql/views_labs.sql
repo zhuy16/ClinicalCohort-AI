@@ -1,3 +1,5 @@
+-- Example longitudinal outcome: HbA1c trajectory with change calculations
+-- Customize LOINC code (currently 4548-4 for HbA1c) for other continuous lab measures (e.g., blood pressure, eGFR, LDL)
 CREATE OR REPLACE VIEW hba1c_trajectory AS
 SELECT
     o.patient_id,

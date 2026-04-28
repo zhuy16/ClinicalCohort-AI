@@ -1,6 +1,6 @@
-# ClinicalCohort AI — Healthcare Data to Insights
+# ClinicalCohort AI — Longitudinal Healthcare Analytics
 
-Ask questions about patient data in plain English. Get SQL queries, results, and interactive dashboards.
+Ask questions about longitudinal clinical or observational datasets in plain English. Get SQL queries, results, and interactive dashboards.
 
 ![ClinicalCohort AI dashboard](docs/dashboard.png)
 
@@ -12,12 +12,12 @@ Ask questions about patient data in plain English. Get SQL queries, results, and
 # Setup (first time only)
 pip install -r requirements.txt
 
-# Default: synthetic/demo source (best for SGLT2 intuition)
+# Default: synthetic/demo source
 make run-synthetic
 
-# Ask a question
+# Ask a question (NLQ text-to-SQL)
 python -m agent.text_to_sql
-> How many patients with high CKD risk are on SGLT2 treatment?
+> Show me the distribution of key metrics by patient group
 
 # Or explore visually
 streamlit run dashboard/app.py
@@ -30,17 +30,17 @@ streamlit run dashboard/app.py
 ✅ **Real healthcare ETL**: ICD-10, LOINC, RxNorm code systems. Canonical schema. DuckDB analytical database.  
 ✅ **SQL + AI**: Text-to-SQL agent using Claude. SELECT-only safety enforcement. Query against live cohort views.  
 ✅ **End-to-end pipeline**: Raw data → Extract/normalize → Load tables → Build SQL views → Query/visualize.  
-✅ **Dataset-flexible dashboard**: Same canonical model supports synthetic/demo, CSV drops, and optional Diabetes130. Sidebar cohort filters apply uniformly. Selectable visualization axes (trajectory Y-axis, distribution category). Equal-width panels. NLQ-based cohort customization in sidebar converts natural language to SQL queries. Box plot with statistical group comparison.  
+✅ **Dataset-agnostic dashboard**: Automatic schema introspection detects numerical and categorical variables. Sidebar cohort filters apply uniformly to all visualizations. Selectable axes for trajectory (any numeric metric) and distribution (any categorical dimension). NLQ-based cohort customization in sidebar converts natural language to SQL. Box plot with statistical group comparison.  
 ✅ **Production polish**: Data quality checks. ETL audit logging. Comprehensive test suite. CI/CD ready.  
 
 ---
 
 ## Dataset Selection (Explicit)
 
-The pipeline is dataset-agnostic, but source choice is explicit so semantics stay clear.
+The pipeline is dataset-agnostic, supporting any data with a canonical schema. Source choice is explicit so semantics stay clear.
 
 ```bash
-# Synthetic/demo source (default recommendation for SGLT2-focused analytics)
+# Synthetic/demo source (default)
 make run-synthetic
 
 # Optional Diabetes130 source
@@ -51,8 +51,8 @@ ETL_SOURCE=synthetic .venv/bin/python -m etl.pipeline
 ETL_SOURCE=diabetes130 .venv/bin/python -m etl.pipeline
 ```
 
-- `ETL_SOURCE=synthetic` (default) keeps SGLT2-oriented medication semantics intuitive.
-- `ETL_SOURCE=diabetes130` uses UCI Diabetes130 mapping into the same canonical schema.
+- `ETL_SOURCE=synthetic` (default) uses generated demo data.
+- `ETL_SOURCE=diabetes130` uses UCI Diabetes130 data mapped to the canonical schema.
 
 ---
 

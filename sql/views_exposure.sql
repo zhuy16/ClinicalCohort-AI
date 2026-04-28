@@ -1,3 +1,5 @@
+-- Example exposure definition: First observed SGLT2 inhibitor medication
+-- Customize the WHERE clause, drug_name, or rxnorm_code for other drugs/exposures
 CREATE OR REPLACE VIEW sglt2_exposure AS
 WITH ranked_medications AS (
     SELECT

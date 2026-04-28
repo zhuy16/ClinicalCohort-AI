@@ -27,7 +27,7 @@ def _connect() -> duckdb.DuckDBPyConnection:
 
 
 st.set_page_config(page_title="ClinicalCohort AI", layout="wide")
-st.title("ClinicalCohort AI - RWE Dashboard")
+st.title("ClinicalCohort AI - Longitudinal Cohort Dashboard")
 
 conn = _connect()
 
@@ -37,7 +37,7 @@ risk_options = [
         "SELECT DISTINCT ckd_risk_level FROM ckd_risk WHERE ckd_risk_level IS NOT NULL ORDER BY 1"
     ).fetchall()
 ]
-_NONE_LABEL = "None (no diabetes drug)"
+_NONE_LABEL = "None"
 drug_options = [_NONE_LABEL] + [
     row[0]
     for row in conn.execute(
@@ -45,19 +45,17 @@ drug_options = [_NONE_LABEL] + [
     ).fetchall()
 ]
 
-known_sglt2 = {"empagliflozin", "canagliflozin", "dapagliflozin"}
-observed_drugs = [d.lower() for d in drug_options if d != _NONE_LABEL]
-sglt2_share = (
-    sum(1 for d in observed_drugs if d in known_sglt2) / len(observed_drugs)
-    if observed_drugs
-    else 0.0
-)
-is_diabetes130_mode = bool(observed_drugs) and sglt2_share < 0.5
+risk_options = [
+    row[0]
+    for row in conn.execute(
+        "SELECT DISTINCT ckd_risk_level FROM ckd_risk ORDER BY 1"
+    ).fetchall()
+]
 
 st.sidebar.header("Filters")
-selected_risk = st.sidebar.multiselect("CKD Risk", options=risk_options, default=risk_options)
-selected_drug = st.sidebar.multiselect("Diabetes Drug", options=drug_options, default=drug_options)
-min_hba1c = st.sidebar.slider("Minimum HbA1c", min_value=5.0, max_value=12.0, value=5.0, step=0.1)
+selected_risk = st.sidebar.multiselect("Risk Strata", options=risk_options, default=risk_options)
+selected_drug = st.sidebar.multiselect("Exposure Status", options=drug_options, default=drug_options)
+min_threshold = st.sidebar.slider("Minimum Threshold", min_value=0.0, max_value=20.0, value=0.0, step=0.1)
 
 risk_filter = "1=1"
 if selected_risk:
@@ -140,24 +138,24 @@ if st.session_state.get("use_custom_cohort", False):
 metrics = conn.execute(
     f"""
     SELECT
-      COUNT(DISTINCT r.patient_id) AS t2d_patients,
-      COUNT(DISTINCT CASE WHEN r.sglt2_drug IS NOT NULL THEN r.patient_id END) AS on_sglt2,
-      COUNT(DISTINCT CASE WHEN c.ckd_risk_level = 'HIGH' THEN r.patient_id END) AS high_ckd,
-      ROUND(AVG(r.hba1c), 2) AS avg_hba1c
+      COUNT(DISTINCT r.patient_id) AS cohort_size,
+      COUNT(DISTINCT CASE WHEN r.sglt2_drug IS NOT NULL THEN r.patient_id END) AS with_drug_exposure,
+      COUNT(DISTINCT CASE WHEN c.ckd_risk_level = 'HIGH' THEN r.patient_id END) AS high_risk,
+      ROUND(AVG(r.hba1c), 2) AS avg_metric
     FROM rwe_cohort r
     LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
     WHERE {risk_filter}
       AND {drug_filter}
       AND {cohort_filter}
-      AND coalesce(r.hba1c, 0) >= {min_hba1c}
+      AND coalesce(r.hba1c, 0) >= {min_metric}
     """
 ).fetchdf()
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("T2D Patients", int(metrics.loc[0, "t2d_patients"]))
-c2.metric("On Diabetes Drug", int(metrics.loc[0, "on_sglt2"]))
-c3.metric("High CKD Signal", int(metrics.loc[0, "high_ckd"]))
-c4.metric("Avg HbA1c", float(metrics.loc[0, "avg_hba1c"] or 0.0))
+c1.metric("Cohort Size", int(metrics.loc[0, "cohort_size"]))
+c2.metric("With Exposure", int(metrics.loc[0, "with_drug_exposure"]))
+c3.metric("High Risk", int(metrics.loc[0, "high_risk"]))
+c4.metric("Avg Metric", float(metrics.loc[0, "avg_metric"] or 0.0))
 
 # Schema introspection — shared by both panels
 _schema_cols = conn.execute(
@@ -204,15 +202,15 @@ with left_panel:
         hba1c_by_drug = conn.execute(
             f"""
             SELECT
-                coalesce(r.sglt2_drug, 'No Diabetes Drug') AS primary_drug,
-                ROUND(AVG(r.hba1c), 2) AS avg_hba1c,
+                coalesce(r.sglt2_drug, 'No Drug') AS exposure_group,
+                ROUND(AVG(r.hba1c), 2) AS avg_metric,
                 COUNT(DISTINCT r.patient_id) AS patients
             FROM rwe_cohort r
             LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
             WHERE {risk_filter}
               AND {drug_filter}
               AND {cohort_filter}
-              AND coalesce(r.hba1c, 0) >= {min_hba1c}
+              AND coalesce(r.hba1c, 0) >= {min_metric}
             GROUP BY 1
             HAVING COUNT(*) > 0
             ORDER BY patients DESC
@@ -220,9 +218,9 @@ with left_panel:
             """
         ).fetchdf()
         if hba1c_by_drug.empty:
-            st.info("No drug-level HbA1c rows found.")
+            st.info("No exposure-level data found.")
         else:
-            fig = px.bar(hba1c_by_drug, x="primary_drug", y="avg_hba1c", color="patients")
+            fig = px.bar(hba1c_by_drug, x="exposure_group", y="avg_metric", color="patients")
             st.plotly_chart(fig, use_container_width=True)
 
     # Left panel trajectory Y-axis selector
@@ -272,7 +270,7 @@ with left_panel:
             WHERE {risk_filter}
               AND {drug_filter}
               AND {cohort_filter}
-              AND coalesce(r.hba1c, 0) >= {min_hba1c}
+              AND coalesce(r.hba1c, 0) >= {min_metric}
               AND traj_metric IS NOT NULL
         ),
         patient_rank AS (
@@ -335,7 +333,7 @@ with left_panel:
         WHERE {risk_filter}
           AND {drug_filter}
           AND {cohort_filter}
-          AND coalesce(r.hba1c, 0) >= {min_hba1c}
+          AND coalesce(r.hba1c, 0) >= {min_metric}
         GROUP BY 1
         ORDER BY 1
         """
@@ -357,10 +355,10 @@ with left_panel:
             c.ckd_risk_level AS kidney_risk
         FROM rwe_cohort r
         LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
-        WHERE {drug_filter}
-          AND {risk_filter}
+        WHERE {risk_filter}
+          AND {drug_filter}
           AND {cohort_filter}
-          AND coalesce(r.hba1c, 0) >= {min_hba1c}
+          AND coalesce(r.hba1c, 0) >= {min_metric}
         ORDER BY r.patient_id
         LIMIT 30
         """
@@ -407,7 +405,7 @@ with right_panel:
                 WHERE {risk_filter}
                   AND {drug_filter}
                   AND {cohort_filter}
-                  AND coalesce(r.hba1c, 0) >= {min_hba1c}
+                  AND coalesce(r.hba1c, 0) >= {min_metric}
             ),
             latest_per_patient AS (
                 SELECT

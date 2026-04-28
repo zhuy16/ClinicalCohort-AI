@@ -1,3 +1,5 @@
+-- Example risk stratification: CKD risk based on eGFR and condition codes
+-- Customize LOINC codes (33914-3 for eGFR), ICD codes (N18% for CKD), and thresholds for your domain/disease
 CREATE OR REPLACE VIEW ckd_risk AS
 SELECT
     p.patient_id,
