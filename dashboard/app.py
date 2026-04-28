@@ -122,7 +122,9 @@ if use_custom_cohort:
 
 st.sidebar.markdown("---")
 st.sidebar.caption(
-    "**Available views** — `rwe_cohort` (patient_id, sglt2_drug, hba1c, ckd_risk_level, …) · "
+    "**Clinical coding** — Observations use LOINC codes (e.g., 4548-4 for HbA1c, 33914-3 for eGFR). "
+    "Conditions use ICD-10 codes (e.g., E11.% for Type 2 Diabetes, N18.% for CKD). "
+    "Medications use RxNorm codes. **Available views** — `rwe_cohort` (patient_id, sglt2_drug, hba1c, ckd_risk_level, …) · "
     "`hba1c_trajectory` (patient_id, observation_month, hba1c, hba1c_change) · "
     "`ckd_risk` (patient_id, egfr, ckd_risk_level) · "
     "`sglt2_exposure` (patient_id, drug_name, start_date)"
@@ -365,6 +367,10 @@ with left_panel:
         """
     ).fetchdf()
     st.dataframe(preview, use_container_width=True)
+    st.caption(
+        "LOINC codes: 4548-4 (HbA1c). OMOP standard tables: patient, observation, condition_occurrence. "
+        "Data source: canonical RWE cohort with standard healthcare terminologies."
+    )
 
 with right_panel:
 
