@@ -27,9 +27,105 @@ def _connect() -> duckdb.DuckDBPyConnection:
 
 
 st.set_page_config(page_title="ClinicalCohort AI", layout="wide")
-st.title("ClinicalCohort AI - Longitudinal Cohort Dashboard")
+
+st.markdown(
+    """
+    <style>
+    :root {
+        --app-bg-top: #f4f7fb;
+        --app-bg-bottom: #eef3f8;
+        --panel-bg: #ffffff;
+        --panel-border: #c8d3df;
+        --text-main: #12202f;
+        --text-muted: #4d5d70;
+        --accent: #0f6a9a;
+    }
+
+    [data-testid="stAppViewContainer"] {
+        background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%);
+    }
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #f6f9fc 0%, #edf3f9 100%);
+        border-right: 1px solid #d2dce7;
+    }
+
+    [data-testid="stSidebarUserContent"] {
+        padding: 0.4rem 0.35rem 0.8rem 0.35rem;
+    }
+
+    [data-testid="stSidebar"] * {
+        color: var(--text-main);
+    }
+
+    [data-testid="stSidebar"] .stMarkdown h3 {
+        color: #0e3853;
+        letter-spacing: 0.02em;
+        font-weight: 700;
+    }
+
+    .main h1, .main h2, .main h3 {
+        color: var(--text-main);
+    }
+
+    .main p, .main label, .main span, .main li {
+        color: var(--text-main);
+    }
+
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 14px;
+        box-shadow: 0 4px 16px rgba(16, 34, 52, 0.07);
+        margin: 0 0.45rem 0.85rem 0.45rem;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {
+        margin: 0.2rem 0.45rem 0.95rem 0.45rem;
+        padding: 0.55rem 0.65rem 0.75rem 0.65rem;
+    }
+
+    [data-testid="stMetric"] {
+        background: #ffffff;
+        border: 1px solid #ccd8e3;
+        border-radius: 12px;
+        padding: 0.55rem 0.7rem;
+        box-shadow: 0 2px 10px rgba(10, 29, 46, 0.06);
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: var(--text-muted);
+        font-weight: 600;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #0e3853;
+        font-weight: 700;
+    }
+
+    div[data-baseweb="select"] > div,
+    [data-baseweb="input"] > div,
+    .stSlider {
+        background: #ffffff;
+        border-radius: 10px;
+    }
+
+    .stAlert {
+        border-radius: 10px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+px.defaults.template = "plotly_white"
+px.defaults.color_discrete_sequence = ["#0f6a9a", "#3f8fb5", "#73a9bf", "#3d5a80", "#7aa6c2", "#4f7f9f"]
 
 conn = _connect()
+
+st.sidebar.markdown("### ClinicalCohort AI - RWE Dashboard")
+st.sidebar.caption("Longitudinal cohort analytics workspace")
+st.sidebar.markdown("---")
 
 risk_options = [
     row[0]
@@ -56,6 +152,10 @@ st.sidebar.header("Filters")
 selected_risk = st.sidebar.multiselect("Risk Strata", options=risk_options, default=risk_options)
 selected_drug = st.sidebar.multiselect("Exposure Status", options=drug_options, default=drug_options)
 min_threshold = st.sidebar.slider("Minimum Threshold", min_value=0.0, max_value=20.0, value=0.0, step=0.1)
+min_metric = min_threshold
+
+# Keep optional dataset-specific block disabled unless explicitly reintroduced.
+is_diabetes130_mode = False
 
 risk_filter = "1=1"
 if selected_risk:
@@ -199,7 +299,7 @@ left_panel = explore_col.container(border=True)
 right_panel = ask_col.container(border=True)
 
 with left_panel:
-
+    st.markdown("**Trajectory over time**")
     if is_diabetes130_mode:
         st.markdown("**Average HbA1c by Primary Diabetes Drug**")
         hba1c_by_drug = conn.execute(
@@ -234,7 +334,6 @@ with left_panel:
         format_func=lambda x: pretty_names.get(x, x),
         key="traj_y_col",
     )
-    st.markdown("**Trajectory over time**")
     subgroup_options = {
         "Primary Drug": "coalesce(r.sglt2_drug, 'No Diabetes Drug')",
         "Kidney Risk": "coalesce(c.ckd_risk_level, 'UNKNOWN')",
@@ -373,6 +472,7 @@ with left_panel:
     )
 
 with right_panel:
+    st.markdown("**Categorical differences**")
 
     if not value_candidates or not category_candidates:
         st.info("No compatible value/category columns found in rwe_cohort for this visualization.")
