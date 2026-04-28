@@ -80,6 +80,63 @@ if selected_drug:
     else:
         drug_filter = "1=0"  # nothing selected → no results
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("Optional Custom Cohort (NLQ)")
+use_custom_cohort = st.sidebar.checkbox(
+    "Use custom cohort restriction",
+    value=st.session_state.get("use_custom_cohort", False),
+    help="When enabled, the dashboard is restricted to patient_id values returned by the NLQ query below.",
+)
+st.session_state["use_custom_cohort"] = use_custom_cohort
+
+if use_custom_cohort:
+    st.sidebar.caption("Write a question that returns a `patient_id` column.")
+    cohort_question = st.sidebar.text_area(
+        "Custom cohort question",
+        key="cohort_question",
+        placeholder="Example: List patient_id for HIGH CKD risk patients not on diabetes drug",
+        height=90,
+    )
+
+    if st.sidebar.button("Apply Cohort", key="apply_custom_cohort"):
+        q = cohort_question.strip()
+        if not q:
+            st.sidebar.warning("Please enter a cohort question first.")
+        else:
+            try:
+                generated_sql, result_df = ask(q)
+                st.session_state["cohort_sql"] = generated_sql
+                st.session_state["cohort_result"] = result_df
+                if "patient_id" not in result_df.columns:
+                    st.sidebar.error("Query result must include a `patient_id` column to define cohort.")
+                    st.session_state.pop("cohort_patient_df", None)
+                else:
+                    cohort_patient_df = result_df[["patient_id"]].dropna().astype(str).drop_duplicates()
+                    st.session_state["cohort_patient_df"] = cohort_patient_df
+                    st.sidebar.success(f"Custom cohort applied: {len(cohort_patient_df)} patients")
+            except Exception as exc:
+                st.sidebar.error(f"Could not apply cohort query: {exc}")
+
+    if st.sidebar.button("Clear Cohort", key="clear_custom_cohort"):
+        st.session_state.pop("cohort_sql", None)
+        st.session_state.pop("cohort_result", None)
+        st.session_state.pop("cohort_patient_df", None)
+
+st.sidebar.markdown("---")
+st.sidebar.caption(
+    "**Available views** — `rwe_cohort` (patient_id, sglt2_drug, hba1c, ckd_risk_level, …) · "
+    "`hba1c_trajectory` (patient_id, observation_month, hba1c, hba1c_change) · "
+    "`ckd_risk` (patient_id, egfr, ckd_risk_level) · "
+    "`sglt2_exposure` (patient_id, drug_name, start_date)"
+)
+
+cohort_filter = "1=1"
+if st.session_state.get("use_custom_cohort", False):
+    cohort_patient_df = st.session_state.get("cohort_patient_df")
+    if isinstance(cohort_patient_df, pd.DataFrame) and not cohort_patient_df.empty:
+        conn.register("custom_cohort_patients", cohort_patient_df)
+        cohort_filter = "r.patient_id IN (SELECT patient_id FROM custom_cohort_patients)"
+
 metrics = conn.execute(
     f"""
     SELECT
@@ -91,6 +148,7 @@ metrics = conn.execute(
     LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
     WHERE {risk_filter}
       AND {drug_filter}
+      AND {cohort_filter}
       AND coalesce(r.hba1c, 0) >= {min_hba1c}
     """
 ).fetchdf()
@@ -101,10 +159,44 @@ c2.metric("On Diabetes Drug", int(metrics.loc[0, "on_sglt2"]))
 c3.metric("High CKD Signal", int(metrics.loc[0, "high_ckd"]))
 c4.metric("Avg HbA1c", float(metrics.loc[0, "avg_hba1c"] or 0.0))
 
-explore_col, ask_col = st.columns([1.35, 1])
+# Schema introspection — shared by both panels
+_schema_cols = conn.execute(
+    """
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_schema = 'main'
+      AND table_name = 'rwe_cohort'
+    ORDER BY ordinal_position
+    """
+).fetchdf()
+_numeric_markers = ("INT", "DOUBLE", "DECIMAL", "REAL", "FLOAT")
+value_candidates = []
+category_candidates = []
+for _, _row in _schema_cols.iterrows():
+    _col = str(_row["column_name"])
+    _dtype = str(_row["data_type"]).upper()
+    if any(m in _dtype for m in _numeric_markers):
+        value_candidates.append(_col)
+    if "VARCHAR" in _dtype and _col != "patient_id":
+        category_candidates.append(_col)
+if "birth_date" in _schema_cols["column_name"].tolist():
+    value_candidates.append("age_years")
+pretty_names = {
+    "hba1c": "HbA1c",
+    "hba1c_change": "HbA1c Change",
+    "lowest_egfr": "Lowest eGFR",
+    "age_years": "Age (years)",
+    "sglt2_drug": "Primary Diabetes Drug",
+    "ckd_risk_level": "Kidney Risk Level",
+    "gender": "Gender",
+}
 
-with explore_col:
-    st.subheader("Population Exploration")
+explore_col, ask_col = st.columns([1, 1], gap="large")
+left_panel = explore_col.container(border=True)
+right_panel = ask_col.container(border=True)
+
+with left_panel:
+    st.subheader("Cohort Distribution")
     st.caption("These charts reflect the cohort selected by the sidebar filters on the left.")
 
     if is_diabetes130_mode:
@@ -119,6 +211,7 @@ with explore_col:
             LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
             WHERE {risk_filter}
               AND {drug_filter}
+              AND {cohort_filter}
               AND coalesce(r.hba1c, 0) >= {min_hba1c}
             GROUP BY 1
             HAVING COUNT(*) > 0
@@ -132,111 +225,273 @@ with explore_col:
             fig = px.bar(hba1c_by_drug, x="primary_drug", y="avg_hba1c", color="patients")
             st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("**HbA1c Trajectory**")
-    a1c = conn.execute(
-                f"""
-                SELECT r.observation_date, AVG(r.hba1c) AS avg_hba1c
-                FROM rwe_cohort r
-                LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
-                WHERE {risk_filter}
-                    AND {drug_filter}
-                    AND coalesce(r.hba1c, 0) >= {min_hba1c}
-        GROUP BY 1
-        ORDER BY 1
+    # Left panel trajectory Y-axis selector
+    traj_y_col = st.selectbox(
+        "Trajectory Y-axis",
+        options=value_candidates if value_candidates else ["hba1c"],
+        index=value_candidates.index("hba1c") if "hba1c" in value_candidates else 0,
+        format_func=lambda x: pretty_names.get(x, x),
+        key="traj_y_col",
+    )
+    st.markdown("**Trajectory over time**")
+    subgroup_options = {
+        "Primary Drug": "coalesce(r.sglt2_drug, 'No Diabetes Drug')",
+        "Kidney Risk": "coalesce(c.ckd_risk_level, 'UNKNOWN')",
+        "Gender": "coalesce(r.gender, 'UNKNOWN')",
+    }
+    selected_subgroup = st.selectbox(
+        "Line pattern subgroup",
+        options=list(subgroup_options.keys()),
+        index=0,
+        key="traj_subgroup",
+    )
+    sampled_patients = st.slider(
+        "Sample patient trajectories",
+        min_value=3,
+        max_value=20,
+        value=8,
+        key="traj_sample_patients",
+    )
+    subgroup_expr = subgroup_options[selected_subgroup]
+
+    if traj_y_col == "age_years":
+        _traj_y_expr = "CAST(date_diff('year', r.birth_date, current_date) AS DOUBLE)"
+    else:
+        _traj_y_expr = f"r.{traj_y_col}"
+
+    patient_lines = conn.execute(
+        f"""
+        WITH filtered AS (
+            SELECT
+                r.patient_id,
+                r.observation_date,
+                {_traj_y_expr} AS traj_metric,
+                {subgroup_expr} AS subgroup
+            FROM rwe_cohort r
+            LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
+            WHERE {risk_filter}
+              AND {drug_filter}
+              AND {cohort_filter}
+              AND coalesce(r.hba1c, 0) >= {min_hba1c}
+              AND traj_metric IS NOT NULL
+        ),
+        patient_rank AS (
+            SELECT
+                patient_id,
+                COUNT(*) AS points_per_patient,
+                MAX(observation_date) AS last_seen
+            FROM filtered
+            GROUP BY 1
+            ORDER BY points_per_patient DESC, last_seen DESC, patient_id
+            LIMIT {sampled_patients}
+        )
+        SELECT
+            f.patient_id,
+            f.observation_date,
+            f.traj_metric,
+            f.subgroup
+        FROM filtered f
+        JOIN patient_rank p ON f.patient_id = p.patient_id
+        ORDER BY f.patient_id, f.observation_date
         """
     ).fetchdf()
-    if a1c.empty:
+    if patient_lines.empty:
         st.info("No HbA1c data found.")
     else:
-        fig = px.line(a1c, x="observation_date", y="avg_hba1c", markers=True)
-        st.plotly_chart(fig, use_container_width=True)
+        fig = px.line(
+            patient_lines,
+            x="observation_date",
+            y="traj_metric",
+            color="patient_id",
+            line_dash="subgroup",
+            markers=True,
+            labels={
+                "patient_id": "Patient",
+                "traj_metric": pretty_names.get(traj_y_col, traj_y_col),
+                "subgroup": selected_subgroup,
+            },
+        )
+        fig.update_traces(marker={"size": 7, "opacity": 0.75})
 
-    st.markdown("**CKD Risk Distribution**")
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "Each colored line is one patient trajectory. Line pattern (solid/dashed/dotted) encodes the selected subgroup."
+        )
+
+    dist_cat_col = st.selectbox(
+        "Distribution by",
+        options=category_candidates if category_candidates else ["ckd_risk_level"],
+        index=category_candidates.index("ckd_risk_level") if "ckd_risk_level" in category_candidates else 0,
+        format_func=lambda x: pretty_names.get(x, x),
+        key="dist_cat_col",
+    )
+    st.markdown("**Cohort Distribution**")
+    _dist_cat_expr = f"coalesce(CAST(r.{dist_cat_col} AS VARCHAR), 'UNKNOWN')"
     risk = conn.execute(
-                f"""
-                SELECT c.ckd_risk_level, COUNT(DISTINCT r.patient_id) AS patients
-                FROM rwe_cohort r
-                LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
-                WHERE {risk_filter}
-                    AND {drug_filter}
-                    AND coalesce(r.hba1c, 0) >= {min_hba1c}
+        f"""
+        SELECT {_dist_cat_expr} AS category, COUNT(DISTINCT r.patient_id) AS patients
+        FROM rwe_cohort r
+        LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
+        WHERE {risk_filter}
+          AND {drug_filter}
+          AND {cohort_filter}
+          AND coalesce(r.hba1c, 0) >= {min_hba1c}
         GROUP BY 1
         ORDER BY 1
         """
     ).fetchdf()
     if risk.empty:
-        st.info("No CKD risk rows found.")
+        st.info("No distribution rows found.")
     else:
-        fig = px.pie(risk, names="ckd_risk_level", values="patients")
+        fig = px.pie(risk, names="category", values="patients",
+                     labels={"category": pretty_names.get(dist_cat_col, dist_cat_col)})
         st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("**Cohort Preview**")
     preview = conn.execute(
         f"""
-                SELECT
-                    patient_id,
-                    sglt2_drug AS primary_drug,
-                    hba1c AS latest_hba1c,
-                    ckd_risk_level AS kidney_risk
-        FROM rwe_cohort
-        WHERE {drug_filter.replace('r.', '')}
-          AND {risk_filter.replace('c.', '')}
-          AND coalesce(hba1c, 0) >= {min_hba1c}
-        ORDER BY patient_id
+        SELECT
+            r.patient_id,
+            r.sglt2_drug AS primary_drug,
+            r.hba1c AS latest_hba1c,
+            c.ckd_risk_level AS kidney_risk
+        FROM rwe_cohort r
+        LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
+        WHERE {drug_filter}
+          AND {risk_filter}
+          AND {cohort_filter}
+          AND coalesce(r.hba1c, 0) >= {min_hba1c}
+        ORDER BY r.patient_id
         LIMIT 30
         """
     ).fetchdf()
     st.dataframe(preview, use_container_width=True)
 
-with ask_col:
-    st.subheader("Ask the Cohort")
-    st.caption("This panel generates SQL and refreshes the result table for each new question. It does not change the exploration charts on the left.")
-    with st.expander("What data is available and what can I ask?", expanded=False):
-        st.markdown(
-            """
-            **Available data views**
-            - `rwe_cohort`: patient-level cohort with drug exposure, HbA1c, CKD risk fields
-            - `t2d_patients`: Type 2 diabetes cohort (ICD-10 E11%)
-            - `sglt2_exposure`: first observed diabetes medication exposure for each patient in the current dataset
-            - `hba1c_trajectory`: HbA1c time series and month-over-month change
-            - `ckd_risk`: eGFR-driven risk buckets (HIGH/MEDIUM/LOW)
+with right_panel:
 
-            **Good question types**
-            - Counts and rates by risk bucket or drug
-            - Trend questions over time (HbA1c by month)
-            - Cohort slicing (e.g., high-risk patients not on a diabetes drug)
-            - Top-N summaries (e.g., most common CKD strata)
-            """
-        )
-
-    question = st.text_area(
-        "Ask a question",
-        placeholder="Example: How many HIGH CKD risk patients are not on a diabetes drug?",
-        height=100,
-    )
-
-    if st.button("Run Question", type="primary"):
-        q = question.strip()
-        if not q:
-            st.warning("Please enter a question first.")
-        else:
-            try:
-                generated_sql, result_df = ask(q)
-                st.session_state["nlq_sql"] = generated_sql
-                st.session_state["nlq_result"] = result_df
-            except Exception as exc:
-                st.error(f"Could not run question: {exc}")
-
-    if "nlq_sql" in st.session_state and "nlq_result" in st.session_state:
-        st.caption("Generated SQL")
-        st.code(st.session_state["nlq_sql"], language="sql")
-        st.caption("Question Result")
-        st.dataframe(st.session_state["nlq_result"], use_container_width=True)
-        st.caption("This result updates for each question you run.")
+    if not value_candidates or not category_candidates:
+        st.info("No compatible value/category columns found in rwe_cohort for this visualization.")
     else:
-        st.info("Run a question to generate SQL and see the result table here.")
 
-st.caption("Filters apply to metrics and charts. CKD risk comes from the ckd_risk view. Drug exposure reflects the first observed diabetes medication for each patient.")
+        selected_value = st.selectbox(
+            "Value to plot",
+            options=value_candidates,
+            index=value_candidates.index("hba1c") if "hba1c" in value_candidates else 0,
+            format_func=lambda x: pretty_names.get(x, x),
+        )
+        selected_category = st.selectbox(
+            "Categorical variable",
+            options=category_candidates,
+            index=category_candidates.index("sglt2_drug") if "sglt2_drug" in category_candidates else 0,
+            format_func=lambda x: pretty_names.get(x, x),
+        )
+        max_groups = st.slider("Max groups to display", min_value=2, max_value=6, value=4)
+
+        if selected_value == "age_years":
+            value_expr = "CAST(date_diff('year', r.birth_date, current_date) AS DOUBLE)"
+        else:
+            value_expr = f"CAST(r.{selected_value} AS DOUBLE)"
+
+        category_expr = f"coalesce(CAST(r.{selected_category} AS VARCHAR), 'UNKNOWN')"
+
+        comparison_df = conn.execute(
+            f"""
+            WITH filtered AS (
+                SELECT
+                    r.patient_id,
+                    r.observation_date,
+                    {value_expr} AS metric_value,
+                    {category_expr} AS category
+                FROM rwe_cohort r
+                LEFT JOIN ckd_risk c ON r.patient_id = c.patient_id
+                WHERE {risk_filter}
+                  AND {drug_filter}
+                  AND {cohort_filter}
+                  AND coalesce(r.hba1c, 0) >= {min_hba1c}
+            ),
+            latest_per_patient AS (
+                SELECT
+                    patient_id,
+                    category,
+                    metric_value,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY patient_id
+                        ORDER BY observation_date DESC NULLS LAST
+                    ) AS rn
+                FROM filtered
+            ),
+            base AS (
+                SELECT patient_id, category, metric_value
+                FROM latest_per_patient
+                WHERE rn = 1
+                  AND metric_value IS NOT NULL
+            ),
+            top_categories AS (
+                SELECT category, COUNT(*) AS patients
+                FROM base
+                GROUP BY 1
+                ORDER BY patients DESC
+                LIMIT {max_groups}
+            )
+            SELECT b.category, b.metric_value
+            FROM base b
+            JOIN top_categories t ON b.category = t.category
+            """
+        ).fetchdf()
+
+        if comparison_df.empty:
+            st.info("No eligible rows for this comparison under current filters.")
+        else:
+            categories_present = comparison_df["category"].nunique()
+            if categories_present < 2:
+                st.info("Only one group is present with current filters. Broaden filters or pick another category.")
+
+            fig = px.box(
+                comparison_df,
+                x="category",
+                y="metric_value",
+                color="category",
+                points="all",
+                labels={
+                    "category": pretty_names.get(selected_category, selected_category),
+                    "metric_value": pretty_names.get(selected_value, selected_value),
+                },
+            )
+            fig.update_traces(jitter=0.35, pointpos=0.0, marker={"size": 5, "opacity": 0.55})
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+            median_df = (
+                comparison_df.groupby("category", as_index=False)
+                .agg(median_value=("metric_value", "median"), patients=("metric_value", "count"))
+                .sort_values("median_value", ascending=False)
+            )
+            if len(median_df) >= 2:
+                top = median_df.iloc[0]
+                bottom = median_df.iloc[-1]
+                median_diff = float(top["median_value"] - bottom["median_value"])
+                metric_label = pretty_names.get(selected_value, selected_value)
+                st.caption(
+                    f"Insight: median {metric_label} is {median_diff:.2f} higher in '{top['category']}' "
+                    f"vs '{bottom['category']}' (n={int(top['patients'])} vs n={int(bottom['patients'])})."
+                )
+            else:
+                only = median_df.iloc[0]
+                metric_label = pretty_names.get(selected_value, selected_value)
+                st.caption(
+                    f"Insight: one group available under current filters. "
+                    f"Median {metric_label} is {float(only['median_value']):.2f} (n={int(only['patients'])})."
+                )
+
+    if st.session_state.get("use_custom_cohort", False):
+        cohort_patient_df = st.session_state.get("cohort_patient_df")
+        if isinstance(cohort_patient_df, pd.DataFrame) and not cohort_patient_df.empty:
+            st.success(f"Custom NLQ cohort active: {len(cohort_patient_df)} patients")
+            if "cohort_sql" in st.session_state:
+                with st.expander("Custom cohort SQL", expanded=False):
+                    st.code(st.session_state["cohort_sql"], language="sql")
+
+st.caption("All visualizations use the same cohort definition from the sidebar filters and optional custom NLQ cohort restriction. CKD risk comes from ckd_risk; drug exposure reflects the first observed diabetes medication per patient.")
 st.info(
     "Clinical caveat: when using Diabetes 130, CKD risk and dates are mapped proxies derived from available columns. "
     "Interpret trend timing and kidney risk buckets as exploratory signals, not validated clinical labels."

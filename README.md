@@ -11,7 +11,9 @@ Ask questions about patient data in plain English. Get SQL queries, results, and
 ```bash
 # Setup (first time only)
 pip install -r requirements.txt
-make run
+
+# Default: synthetic/demo source (best for SGLT2 intuition)
+make run-synthetic
 
 # Ask a question
 python -m agent.text_to_sql
@@ -28,7 +30,29 @@ streamlit run dashboard/app.py
 ✅ **Real healthcare ETL**: ICD-10, LOINC, RxNorm code systems. Canonical schema. DuckDB analytical database.  
 ✅ **SQL + AI**: Text-to-SQL agent using Claude. SELECT-only safety enforcement. Query against live cohort views.  
 ✅ **End-to-end pipeline**: Raw data → Extract/normalize → Load tables → Build SQL views → Query/visualize.  
+✅ **Dataset-flexible**: Same canonical model supports synthetic/demo, CSV drops, and optional Diabetes130 source selection.  
 ✅ **Production polish**: Data quality checks. ETL audit logging. Comprehensive test suite. CI/CD ready.  
+
+---
+
+## Dataset Selection (Explicit)
+
+The pipeline is dataset-agnostic, but source choice is explicit so semantics stay clear.
+
+```bash
+# Synthetic/demo source (default recommendation for SGLT2-focused analytics)
+make run-synthetic
+
+# Optional Diabetes130 source
+make run-diabetes130
+
+# Equivalent environment-variable form
+ETL_SOURCE=synthetic .venv/bin/python -m etl.pipeline
+ETL_SOURCE=diabetes130 .venv/bin/python -m etl.pipeline
+```
+
+- `ETL_SOURCE=synthetic` (default) keeps SGLT2-oriented medication semantics intuitive.
+- `ETL_SOURCE=diabetes130` uses UCI Diabetes130 mapping into the same canonical schema.
 
 ---
 
@@ -37,7 +61,7 @@ streamlit run dashboard/app.py
 ### Scenario 1: Synthetic Demo (0 setup)
 
 ```bash
-make run              # Auto-generates demo CSV data
+make run-synthetic    # Auto-generates demo CSV data
 make dashboard        # Interactive filters + charts
 ```
 
@@ -52,7 +76,7 @@ You have claims/EHR CSVs from Kaggle or a hospital extract. Want to ask the same
 **Steps**:
 1. Shape your CSVs to match the canonical schema (6 tables: patients, encounters, conditions, observations, medications, claims)
 2. Drop them into `data/raw/synthea/csv/`
-3. Run: `make run`
+3. Run: `make run-synthetic`
 4. Ask away: `python -m agent.text_to_sql`
 
 **Files to customize**:
@@ -87,7 +111,7 @@ Your stakeholder says: *"We care about readmission risk in diabetic CKD patients
 1. Edit `sql/views_t2d.sql` to filter your cohort definition (e.g., add comorbidity logic)
 2. Edit `sql/views_risk.sql` to define your risk buckets (not just eGFR, maybe add hospitalization counts)
 3. Add a new SQL view `sql/views_readmission.sql` with your metric
-4. Run: `make run`
+4. Run: `make run-synthetic`
 5. Ask: `python -m agent.text_to_sql`  
    > *"What's the average readmission rate for patients in the HIGH risk bucket?"*
 
@@ -129,7 +153,8 @@ Your stakeholder says: *"We care about readmission risk in diabetic CKD patients
 
 | I want to… | Run this |
 |---|---|
-| Run full pipeline | `make run` or `bash scripts/run_pipeline.sh` |
+| Run synthetic/default pipeline | `make run` or `make run-synthetic` |
+| Run Diabetes130 pipeline | `make run-diabetes130` or `ETL_SOURCE=diabetes130 .venv/bin/python -m etl.pipeline` |
 | HL7 ingestion | `make run-hl7` or `python -m etl.pipeline_hl7v2` |
 | Ask questions via CLI | `python -m agent.text_to_sql` |
 | Ask questions in dashboard | `streamlit run dashboard/app.py` then use **Ask the Cohort (Natural Language)** |
@@ -159,7 +184,7 @@ cp .env.example .env
 # Edit .env: add your ANTHROPIC_API_KEY
 
 # Run the demo
-make run
+make run-synthetic
 make dashboard
 ```
 

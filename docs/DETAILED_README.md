@@ -20,7 +20,7 @@ Demonstrates healthcare data engineering depth with domain coding systems and pr
 ## Architecture
 
 ```
-Raw HL7/FHIR (or synthetic fallback)
+Raw source (synthetic/demo, Diabetes130, CSV, HL7/FHIR)
   → ETL extraction and normalization
   → DuckDB canonical schema (patients/encounters/conditions/observations/medications/claims)
   → SQL cohort views (t2d, exposure, labs, risk, final cohort)
@@ -36,6 +36,7 @@ Raw HL7/FHIR (or synthetic fallback)
 - `data/raw/synthea/fhir/` — Sample raw FHIR bundles
 - `data/raw/synthea/hl7v2/` — Sample raw HL7 v2 messages
 - `data/raw/synthea/csv/` — Drop real CSVs here
+- `data/raw/diabetes130/` — Optional UCI Diabetes130 source
 - `data/processed/demo_csv/` — Synthetic tabular source for ETL loader
 - `data/processed/from_hl7v2/` — Tables parsed from HL7
 - `data/processed/reports/` — DQ reports
@@ -102,8 +103,24 @@ Six tables defined in `sql/schema.sql`. Every pipeline (CSV, HL7, FHIR, MIMIC) m
 
 For CSV-based ETL:
 1. Name files: `patients.csv`, `encounters.csv`, `conditions.csv`, `observations.csv`, `medications.csv`, `claims.csv`
-2. Place in: `data/processed/demo_csv/`
-3. If missing, ETL auto-generates deterministic demo data
+2. Place in: `data/raw/synthea/csv/`
+3. Run with synthetic/default source selection (`make run-synthetic`)
+
+### Dataset Selection
+
+Source is explicit via `ETL_SOURCE` to keep analytics semantics clear:
+
+```bash
+# Default behavior (synthetic/demo or raw CSV in data/raw/synthea/csv)
+make run-synthetic
+
+# Optional Diabetes130 mapping path
+make run-diabetes130
+
+# Equivalent direct command
+ETL_SOURCE=synthetic .venv/bin/python -m etl.pipeline
+ETL_SOURCE=diabetes130 .venv/bin/python -m etl.pipeline
+```
 
 ### HL7 v2
 
@@ -126,9 +143,12 @@ For CSV-based ETL:
 
 ```bash
 bash scripts/run_pipeline.sh
+# or explicitly
+bash scripts/run_pipeline.sh synthetic
 ```
 
 - Loads/generates CSV data
+- Uses `ETL_SOURCE` to choose source (`synthetic` default, `diabetes130` optional)
 - Builds DuckDB tables
 - Creates SQL views
 - Auto-generates demo data if needed

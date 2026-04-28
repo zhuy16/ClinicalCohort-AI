@@ -10,6 +10,11 @@ else
 	PYTHON_BIN="python3"
 fi
 
+# Optional first argument sets ETL source. Defaults to synthetic/demo behavior.
+if [[ $# -ge 1 ]]; then
+	export ETL_SOURCE="$1"
+fi
+
 "$PYTHON_BIN" -m etl.pipeline
 "$PYTHON_BIN" tests/test_sql_views.py
 

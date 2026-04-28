@@ -11,7 +11,7 @@ Show an end-to-end healthcare ETL + SQL analytics + AI query workflow in under 8
 - Explain key segments: MSH, PID, PV1, DG1, OBX, RXE, FT1.
 
 2. Transform into canonical tables
-- Run: `bash scripts/run_phase2.sh`
+- Run: `bash scripts/run_phase2.sh` (uses synthetic/default source path)
 - Show parsed outputs: `data/processed/from_hl7v2/*.csv`
 - Show DQ outputs: `data/processed/reports/dq_report.md`
 
@@ -27,6 +27,10 @@ Show an end-to-end healthcare ETL + SQL analytics + AI query workflow in under 8
 - Run dashboard: `streamlit run dashboard/app.py`
 - In **Ask the Cohort (Natural Language)**, ask:
   "How many diabetic patients are high CKD risk without SGLT2 exposure?"
+
+Optional dataset switch for the same demo structure:
+- Synthetic/default: `make run-synthetic`
+- Diabetes130: `make run-diabetes130`
 
 ## Talking points for reviewers
 

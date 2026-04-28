@@ -17,6 +17,7 @@ class ExtractConfig:
     raw_csv_dir: Path
     processed_demo_dir: Path
     diabetes130_csv: Path | None = None
+    use_diabetes130: bool = False
     seed: int = 7
     patient_count: int = 300
 
@@ -45,7 +46,7 @@ def load_synthea_or_demo(config: ExtractConfig) -> Dict[str, pd.DataFrame]:
             "claims": claims,
         }
 
-    if config.diabetes130_csv and config.diabetes130_csv.exists():
+    if config.use_diabetes130 and config.diabetes130_csv and config.diabetes130_csv.exists():
         dataset = load_diabetes130_to_canonical(config.diabetes130_csv)
         _persist_demo_dataset(config.processed_demo_dir, dataset)
         return dataset

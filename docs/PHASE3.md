@@ -11,7 +11,7 @@ This phase adds production-oriented polish on top of the interview-ready project
 - Pipeline run metadata captured in DuckDB tables:
   - `etl_run_log`
   - `etl_table_row_counts`
-- Captures status, runtime, source type, and table counts per run.
+- Captures status, runtime, source type (`synthetic_or_csv` or `diabetes130`), and table counts per run.
 
 3. HL7 parser robustness testing
 - `tests/test_parse_hl7v2_parser.py` validates malformed/unknown segment handling.

@@ -1,4 +1,4 @@
-.PHONY: setup fetch-diabetes130 run run-hl7 phase2 phase3 dq dashboard test clean
+.PHONY: setup fetch-diabetes130 run run-synthetic run-diabetes130 run-hl7 phase2 phase3 dq dashboard test clean
 
 PYTHON_BIN := $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python3; fi)
 
@@ -9,7 +9,13 @@ fetch-diabetes130:
 	bash scripts/fetch_diabetes130.sh
 
 run:
-	$(PYTHON_BIN) -m etl.pipeline
+	$(MAKE) run-synthetic
+
+run-synthetic:
+	ETL_SOURCE=synthetic $(PYTHON_BIN) -m etl.pipeline
+
+run-diabetes130: fetch-diabetes130
+	ETL_SOURCE=diabetes130 $(PYTHON_BIN) -m etl.pipeline
 
 run-hl7:
 	$(PYTHON_BIN) -m etl.generate_sample_hl7v2

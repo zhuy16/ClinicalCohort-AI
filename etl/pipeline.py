@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import uuid
 
@@ -15,6 +16,9 @@ def run_pipeline(repo_root: Path) -> Path:
 
     raw_csv_dir = repo_root / "data" / "raw" / "synthea" / "csv"
     diabetes130_csv = repo_root / "data" / "raw" / "diabetes130" / "diabetic_data.csv"
+    source_preference = os.getenv("ETL_SOURCE", "synthetic").strip().lower()
+    use_diabetes130 = source_preference in {"diabetes130", "diabetes_130", "uci_diabetes130"}
+    source_type = "diabetes130" if use_diabetes130 else "synthetic_or_csv"
     processed_demo_dir = repo_root / "data" / "processed" / "demo_csv"
     db_path = repo_root / "db" / "clinical.duckdb"
     sql_dir = repo_root / "sql"
@@ -25,6 +29,7 @@ def run_pipeline(repo_root: Path) -> Path:
                 raw_csv_dir=raw_csv_dir,
                 processed_demo_dir=processed_demo_dir,
                 diabetes130_csv=diabetes130_csv,
+                use_diabetes130=use_diabetes130,
             )
         )
         rebuild_database(db_path=db_path, sql_dir=sql_dir, dataset=dataset)
@@ -35,7 +40,7 @@ def run_pipeline(repo_root: Path) -> Path:
             db_path=db_path,
             run_id=run_id,
             pipeline_name="pipeline",
-            source_type="csv_demo",
+            source_type=source_type,
             status="SUCCESS",
             started_at_utc=started_at.replace(microsecond=0).isoformat(),
             finished_at_utc=finished_at.replace(microsecond=0).isoformat(),
@@ -48,7 +53,7 @@ def run_pipeline(repo_root: Path) -> Path:
             db_path=db_path,
             run_id=run_id,
             pipeline_name="pipeline",
-            source_type="csv_demo",
+            source_type=source_type,
             status="FAILED",
             started_at_utc=started_at.replace(microsecond=0).isoformat(),
             finished_at_utc=finished_at.replace(microsecond=0).isoformat(),
