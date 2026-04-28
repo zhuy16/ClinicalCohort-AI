@@ -7,7 +7,7 @@ A self-contained guide to the folder structure, data formats, transformation cha
 ## 1. Folder Map
 
 ```
-diabetes_hospitalization_etl/
+ClinicalCohort-AI/
 │
 ├── etl/                        ← All Python logic (extract → transform → load)
 │   ├── pipeline.py             ← MAIN ENTRY POINT (CSV path)
@@ -24,10 +24,10 @@ diabetes_hospitalization_etl/
 │
 ├── sql/                        ← All SQL (schema + analytical views)
 │   ├── schema.sql              ← CREATE TABLE statements (6 canonical tables)
-│   ├── views_t2d.sql           ← t2d_patients: patients with ICD-10 E11.*
-│   ├── views_exposure.sql      ← sglt2_exposure: SGLT2 drug prescriptions
-│   ├── views_labs.sql          ← hba1c_trajectory: HbA1c time series + LAG window
-│   ├── views_risk.sql          ← ckd_risk: eGFR-based HIGH/MEDIUM/LOW buckets
+│   ├── views_t2d.sql           ← t2d_patients: default diabetes cohort example (ICD-10 E11.*)
+│   ├── views_exposure.sql      ← sglt2_exposure: default exposure example from medications
+│   ├── views_labs.sql          ← hba1c_trajectory: default longitudinal metric example + LAG window
+│   ├── views_risk.sql          ← ckd_risk: default eGFR-based HIGH/MEDIUM/LOW buckets
 │   └── views_final_cohort.sql  ← rwe_cohort: joined view powering the dashboard
 │
 ├── dashboard/

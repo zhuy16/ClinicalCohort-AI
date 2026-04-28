@@ -65,7 +65,7 @@ make run-synthetic    # Auto-generates demo CSV data
 make dashboard        # Interactive filters + charts
 ```
 
-**What it shows**: Immediate gratification. Pipeline works. Dashboard is real. You can explore filtering by CKD risk, SGLT2 drug, HbA1c thresholds.
+**What it shows**: Immediate gratification. Pipeline works. Dashboard is real. You can explore filtering by risk strata, exposure status, and threshold constraints, plus optional NLQ cohort restriction.
 
 ---
 
@@ -82,7 +82,7 @@ You have claims/EHR CSVs from Kaggle or a hospital extract. Want to ask the same
 **Files to customize**:
 - `etl/extract_synthea.py`: Add a CSV loader for your schema if column names differ
 - `etl/normalize_codes.py`: Map your ICD/LOINC/RxNorm codes to the expected values
-- `sql/views_t2d.sql`: Change the cohort from "T2D (E11%)" to any ICD prefix you care about
+- `sql/views_t2d.sql`: Change the cohort logic from the default diabetes example to any ICD prefix/condition you care about
 
 ---
 
@@ -157,7 +157,7 @@ Your stakeholder says: *"We care about readmission risk in diabetic CKD patients
 | Run Diabetes130 pipeline | `make run-diabetes130` or `ETL_SOURCE=diabetes130 .venv/bin/python -m etl.pipeline` |
 | HL7 ingestion | `make run-hl7` or `python -m etl.pipeline_hl7v2` |
 | Ask questions via CLI | `python -m agent.text_to_sql` |
-| Ask questions in dashboard | `streamlit run dashboard/app.py` then use **Ask the Cohort (Natural Language)** |
+| Ask questions in dashboard | `streamlit run dashboard/app.py` then use **Optional Custom Cohort (NLQ)** in the sidebar |
 | Explore dashboard | `streamlit run dashboard/app.py` |
 | Check data quality | `make dq` |
 | Run tests | `make test` |
@@ -169,8 +169,8 @@ Your stakeholder says: *"We care about readmission risk in diabetic CKD patients
 
 ```bash
 # Clone and enter repo
-git clone https://github.com/zhuy16/diabetes_hospitalization_etl.git
-cd diabetes_hospitalization_etl
+git clone https://github.com/zhuy16/ClinicalCohort-AI.git
+cd ClinicalCohort-AI
 
 # Create virtual environment
 python3 -m venv .venv

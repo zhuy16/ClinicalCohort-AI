@@ -22,17 +22,17 @@ Show an end-to-end healthcare ETL + SQL analytics + AI query + interactive cohor
 4. Interactive analytics dashboard
 - Run: `streamlit run dashboard/app.py`
 - Left sidebar defines cohort:
-  - CKD Risk filter (multi-select)
-  - Diabetes Drug filter (multi-select)
-  - Minimum HbA1c threshold slider
-  - Optional: Natural language cohort restriction (e.g., "high-risk patients not on SGLT2")
-- Left panel: Trajectory visualization (select Y-axis from any numeric field) + Distribution pie chart (select category from any categorical field)
-- Right panel: Cohort Distribution insight boxplot (select value and category)
+  - Risk Strata filter (multi-select)
+  - Exposure Status filter (multi-select)
+  - Minimum Threshold slider
+  - Optional: Natural language cohort restriction (for example, "high-risk patients without exposure")
+- Left panel: **Trajectory over time** (select Y-axis from any numeric field) + **Cohort Distribution** pie chart (select category from any categorical field)
+- Right panel: **Categorical differences** boxplot (select value and category)
 - All panels apply the same cohort restriction.
 
 5. AI-assisted natural language query (optional)
 - In sidebar "Optional Custom Cohort (NLQ)" section, ask a question that returns `patient_id`:
-  - Example: "How many diabetic patients are high CKD risk without SGLT2 exposure?"
+  - Example: "How many patients are high risk without drug exposure?"
   - The LLM converts it to a SQL query against `rwe_cohort`, `ckd_risk`, etc.
   - Click "Apply Cohort" to restrict all visualizations to that subset.
 
@@ -48,4 +48,4 @@ Optional dataset switch for the same demo structure:
 - Reproducible local run scripts and modular pipeline components.
 - Cohort-first interactive dashboard: sidebar defines cohort, all panels enforce it. Dataset-agnostic axis selection supports exploration of any data source using the same canonical schema.
 - Natural language cohort restriction: write SQL without knowing SQL. Safety constraints via SELECT-only enforcement.
-- Clinical interpretation caveat: synthetic HbA1c can appear noisy (rapid 7–11 swings), but real HbA1c usually changes gradually over months because it reflects an approximately 3-month glycemic average.
+- Clinical interpretation caveat: if using the diabetes example source, synthetic HbA1c can appear noisy (rapid 7–11 swings), but real HbA1c usually changes gradually over months because it reflects an approximately 3-month glycemic average.
