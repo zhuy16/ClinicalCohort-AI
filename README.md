@@ -1,134 +1,172 @@
-# ClinicalCohort AI - Healthcare SQL ETL Demo
+# ClinicalCohort AI — Healthcare Data to Insights
 
-This project is a portfolio-ready healthcare ETL and analytics prototype focused on a canonical RWE question:
-
-- Identify Type 2 Diabetes (ICD-10 E11%) patients
-- Find SGLT2 treatment exposure (RxNorm concepts)
-- Track HbA1c trajectory (LOINC 4548-4)
-- Stratify CKD risk using eGFR (LOINC 33914-3) and CKD diagnoses (ICD-10 N18%)
-
-## Why this project
-
-This demonstrates healthcare data engineering depth with domain coding systems and practical SQL analytics.
-
-## Architecture
-
-Raw HL7/FHIR (or synthetic fallback)
-  -> ETL extraction and normalization
-  -> DuckDB canonical schema (patients/encounters/conditions/observations/medications/claims)
-  -> SQL cohort views (t2d, exposure, labs, risk, final cohort)
-  -> Streamlit dashboard + optional Anthropic text-to-SQL CLI
-
-## Dashboard snapshot
-
-The dashboard reads from the final DuckDB cohort view and lets you slice the synthetic population by CKD risk, SGLT2 exposure, and HbA1c threshold.
+Ask questions about patient data in plain English. Get SQL queries, results, and interactive dashboards.
 
 ![ClinicalCohort AI dashboard](docs/dashboard.png)
 
-## Project structure
+---
 
-- `data/raw/synthea/fhir/` sample raw FHIR bundles
-- `data/raw/synthea/hl7v2/` sample raw HL7 v2 messages
-- `data/processed/demo_csv/` synthetic tabular source used for current MVP ETL loader
-- `db/clinical.duckdb` local analytical database
-- `etl/` extraction, normalization, loading, and pipeline entrypoint
-- `sql/` schema and analytic views
-- `agent/` text-to-SQL prompt and CLI
-- `dashboard/app.py` Streamlit app
-- `tests/test_sql_views.py` smoke checks
-- `scripts/run_pipeline.sh` one-command pipeline + validation
-- `scripts/run_phase2.sh` Phase II workflow (HL7 -> DuckDB -> DQ -> tests)
-- `scripts/run_phase3.sh` Phase III workflow (robustness test + phase2 + metadata)
-- `etl/data_quality.py` data-quality checks and report generator
-- `etl/run_metadata.py` ETL run log and table-row-count capture
-- `docs/INTERVIEW_DEMO.md` recruiter-facing demo flow
-- `docs/PHASE3.md` production-style polish summary
+## 30-Second Demo
 
-## Quick start
+```bash
+# Setup (first time only)
+pip install -r requirements.txt
+make run
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
-   - `pip install -r requirements.txt`
-3. Optional: add `.env` from `.env.example` for Anthropic agent.
-4. Run pipeline and checks:
-   - `bash scripts/run_pipeline.sh`
-5. Launch dashboard:
-   - `streamlit run dashboard/app.py`
+# Ask a question
+python -m agent.text_to_sql
+> How many patients with high CKD risk are on SGLT2 treatment?
 
-HL7 v2 ingestion path:
+# Or explore visually
+streamlit run dashboard/app.py
+```
 
-1. Ensure raw HL7 files exist in `data/raw/synthea/hl7v2/`.
-2. Parse HL7 and load DuckDB via:
-   - `python -m etl.pipeline_hl7v2`
-3. Parsed tabular outputs are written to:
-   - `data/processed/from_hl7v2/`
+---
 
-Phase II full run:
+## What This Shows
 
-- `bash scripts/run_phase2.sh`
-- This generates/refreshes:
-   - `data/processed/from_hl7v2/*.csv`
-   - `data/processed/from_hl7v2/parse_summary.csv`
-   - `data/processed/reports/dq_report.md`
-   - `data/processed/reports/dq_report.json`
+✅ **Real healthcare ETL**: ICD-10, LOINC, RxNorm code systems. Canonical schema. DuckDB analytical database.  
+✅ **SQL + AI**: Text-to-SQL agent using Claude. SELECT-only safety enforcement. Query against live cohort views.  
+✅ **End-to-end pipeline**: Raw data → Extract/normalize → Load tables → Build SQL views → Query/visualize.  
+✅ **Production polish**: Data quality checks. ETL audit logging. Comprehensive test suite. CI/CD ready.  
 
-Phase III full run:
+---
 
-- `bash scripts/run_phase3.sh`
-- Adds pipeline observability tables in DuckDB:
-   - `etl_run_log`
-   - `etl_table_row_counts`
-- Includes parser robustness testing:
-   - `tests/test_parse_hl7v2_parser.py`
+## Scenarios
 
-## Synthea input
+### Scenario 1: Synthetic Demo (0 setup)
 
-For this MVP, normalized tabular inputs are stored in `data/processed/demo_csv/`.
+```bash
+make run              # Auto-generates demo CSV data
+make dashboard        # Interactive filters + charts
+```
 
-If you have Synthea CSV exports, place them in `data/processed/demo_csv/` with names:
+**What it shows**: Immediate gratification. Pipeline works. Dashboard is real. You can explore filtering by CKD risk, SGLT2 drug, HbA1c thresholds.
 
-- `patients.csv`
-- `encounters.csv`
-- `conditions.csv`
-- `observations.csv`
-- `medications.csv`
-- `claims.csv` (optional)
+---
 
-If files are missing, ETL auto-generates deterministic demo data so the project remains runnable.
-Generated fallback CSVs are saved to `data/processed/demo_csv/` for inspection and ad hoc analysis.
+### Scenario 2: Your Own CSV Data
 
-FHIR note:
+You have claims/EHR CSVs from Kaggle or a hospital extract. Want to ask the same questions.
 
-- Synthea can export both CSV and FHIR. This MVP ETL loads CSV for speed.
-- Sample raw FHIR bundles are available in `data/raw/synthea/fhir/` (generated from demo data) so you can inspect HL7 FHIR resource structure.
-- To regenerate those examples, run: `python -m etl.generate_sample_fhir`
+**Steps**:
+1. Shape your CSVs to match the canonical schema (6 tables: patients, encounters, conditions, observations, medications, claims)
+2. Drop them into `data/raw/synthea/csv/`
+3. Run: `make run`
+4. Ask away: `python -m agent.text_to_sql`
 
-HL7 v2 note:
+**Files to customize**:
+- `etl/extract_synthea.py`: Add a CSV loader for your schema if column names differ
+- `etl/normalize_codes.py`: Map your ICD/LOINC/RxNorm codes to the expected values
+- `sql/views_t2d.sql`: Change the cohort from "T2D (E11%)" to any ICD prefix you care about
 
-- Sample raw HL7 v2 messages are available in `data/raw/synthea/hl7v2/`.
-- These files include common segments used in ETL parsing demos: `MSH`, `PID`, `PV1`, `DG1`, `OBX`, `RXE`, `FT1`.
-- To regenerate those examples, run: `python -m etl.generate_sample_hl7v2`
-- To parse HL7 files into processed tabular outputs only, run: `python -m etl.parse_hl7v2`
+---
 
-## Example SQL questions
+### Scenario 3: HL7 v2 or FHIR Data
 
-- How many T2D patients are on SGLT2 therapy?
-- Show average HbA1c by month in the last 12 months.
-- List high CKD risk patients without SGLT2 exposure.
+You have raw HL7 segments or FHIR bundles. Want to ingest those instead of CSVs.
 
-## Agent usage
+**HL7 path**:
+```bash
+# Ensure raw files exist in data/raw/synthea/hl7v2/
+make run-hl7          # Parses HL7 → canonical tables → DuckDB
+make dashboard
+```
 
-- `python -m agent.text_to_sql`
-- Ask a question in natural language.
-- The tool generates read-only SQL and executes it on DuckDB.
+**FHIR path** (stub):
+- Create `etl/load_fhir.py` that parses FHIR resources into the 6 canonical DataFrames
+- Wire it into `etl/pipeline.py` the same way HL7 is wired
 
-## What this demonstrates for hiring
+---
 
-- Healthcare code systems: ICD-10, LOINC, RxNorm
-- ETL design and canonical modeling
-- SQL depth: cohort logic, joins, and window functions
-- Lightweight AI-assisted analytics workflow
-- Runnable local prototype for interviews
-- Data quality discipline (explicit PASS/WARN/FAIL checks)
-- HL7 segment parsing with deterministic canonical output schemas
-- ETL run observability and auditability (per-run metadata + row counts)
+### Scenario 4: Different Clinical Question
+
+Your interviewer says: *"We care about readmission risk in diabetic CKD patients. Can you build that?"*
+
+**Adapt in minutes**:
+1. Edit `sql/views_t2d.sql` to filter your cohort definition (e.g., add comorbidity logic)
+2. Edit `sql/views_risk.sql` to define your risk buckets (not just eGFR, maybe add hospitalization counts)
+3. Add a new SQL view `sql/views_readmission.sql` with your metric
+4. Run: `make run`
+5. Ask: `python -m agent.text_to_sql`  
+   > *"What's the average readmission rate for patients in the HIGH risk bucket?"*
+
+---
+
+## Use This As
+
+- **Portfolio piece**: "I built a text-to-SQL system for healthcare analytics"
+- **Interview demo**: "Let me show you real ETL, SQL cohort logic, and a working LLM integration"
+- **Template**: Copy this structure, swap your data, ask your questions
+- **Learning**: Study canonical modeling, healthcare code systems, DuckDB + SQL views + Streamlit
+
+---
+
+## Key Skills on Display
+
+| Skill | Where |
+|---|---|
+| ETL pipeline design | `etl/pipeline.py` + `etl/extract_synthea.py` |
+| Healthcare code systems (ICD-10, LOINC, RxNorm) | `etl/normalize_codes.py` + views |
+| SQL cohort logic, window functions, joins | `sql/views_*.sql` |
+| Data quality discipline | `etl/data_quality.py` reports |
+| LLM integration (Anthropic) | `agent/text_to_sql.py` |
+| Analytics UI (Streamlit) | `dashboard/app.py` |
+| DevOps (Makefile, CI/CD, tests) | `Makefile`, `.github/workflows/ci.yml` |
+
+---
+
+## Detailed Docs
+
+- **[REPO_WALKTHROUGH.md](docs/REPO_WALKTHROUGH.md)** — Folder map, entry points, data formats, how to plug in new datasets
+- **[INTERVIEW_DEMO.md](docs/INTERVIEW_DEMO.md)** — Script for walking an interviewer through the demo
+- **[PHASE3.md](docs/PHASE3.md)** — Production hardening details (HL7 parsing robustness, metadata logging, testing)
+- **[DETAILED_README.md](docs/DETAILED_README.md)** — Full project structure and technical details
+
+---
+
+## Quick Reference
+
+| I want to… | Run this |
+|---|---|
+| Run full pipeline | `make run` or `bash scripts/run_pipeline.sh` |
+| HL7 ingestion | `make run-hl7` or `python -m etl.pipeline_hl7v2` |
+| Ask questions via CLI | `python -m agent.text_to_sql` |
+| Explore dashboard | `streamlit run dashboard/app.py` |
+| Check data quality | `make dq` |
+| Run tests | `make test` |
+| See all phases | `make phase3` |
+
+---
+
+## Setup (First Time)
+
+```bash
+# Clone and enter repo
+git clone https://github.com/zhuy16/diabetes_hospitalization_etl.git
+cd diabetes_hospitalization_etl
+
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Optional: add Anthropic API key for text-to-SQL agent
+cp .env.example .env
+# Edit .env: add your ANTHROPIC_API_KEY
+
+# Run the demo
+make run
+make dashboard
+```
+
+---
+
+## What's Next
+
+- Integrate real data from your source (CSV, FHIR, HL7, MIMIC-IV)
+- Extend the cohort definition or add new clinical questions
+- Deploy the dashboard to Streamlit Cloud
+- Add more sophisticated risk models or outcome metrics
